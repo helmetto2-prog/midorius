@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>ミドリウス シューティング v13 〜スマホ操作パネル〜</title>
+<title>ミドリウス シューティング v20 〜全4章の物語と、地上まで変わる編成〜</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html, body { background:#05060f; overscroll-behavior:none; }
@@ -94,8 +94,15 @@ const SFX = (function(){
     for(let i=0;i<dt.length;i++) dt[i]=Math.random()*2-1; const s=ac.createBufferSource(); s.buffer=b;
     const f=ac.createBiquadFilter(); f.type='bandpass'; f.frequency.value=freq; const g=ac.createGain();
     g.gain.setValueAtTime(v,t); g.gain.exponentialRampToValueAtTime(0.001,t+d); s.connect(f).connect(g).connect(master); s.start(t); s.stop(t+d+0.05); }
-  // 内蔵BGM（自作チップチューン・32ステップ/約150ms）：通常曲stage（C長調・疾走）／ボス曲boss（A短調・緊張）
+  // 内蔵BGM（自作チップチューン・32ステップ）：4場面制
+  //  title=出撃前の静けさ（結果画面/タイトル）／stage=通常（C長調・疾走）／boss=ボス（A短調・緊張）／pinch=最後の1機（半音の焦燥）
   const BGM = {
+    title: {  // 緑の惑星ミドリスの残照。ゆったり漂うアンビエント（打楽器なし）
+      lead: [76,null,null,null, 79,null,null,null, 74,null,null,null, 71,null,null,null,
+             72,null,null,null, 76,null,null,null, 74,null,null,null, 69,null,null,null],
+      bass: [40,null,null,null, 47,null,null,null, 38,null,null,null, 45,null,null,null,
+             36,null,null,null, 43,null,null,null, 41,null,null,null, 40,null,null,null],
+    },
     stage: {
       lead: [72,76,79,76, 74,76,72,null, 71,74,79,74, 72,74,71,null,
              69,72,76,72, 71,72,69,null, 65,69,72,69, 67,69,65,null],
@@ -108,12 +115,31 @@ const SFX = (function(){
       bass: [45,45,45,46, 45,45,45,44, 50,50,50,51, 50,50,50,49,
              52,52,52,53, 52,52,52,51, 45,45,48,46, 45,44,45,47],
     },
+    pinch: {  // 最後の1機。半音でにじり寄る焦燥＋鼓動
+      lead: [76,77,76,75, 76,77,76,75, 74,75,74,73, 74,75,74,73,
+             72,73,74,75, 76,77,78,79, 80,79,78,77, 76,75,74,73],
+      bass: [40,40,41,41, 40,40,41,41, 38,38,39,39, 38,38,39,39,
+             36,36,37,37, 36,36,37,37, 40,40,41,41, 42,42,43,43],
+    },
   };
-  function bgmInterval(){ return bgmMode==='boss'?118:150; }   // ボスは速いテンポ
-  function tickBGM(){ if(!ac) return; const boss=bgmMode==='boss', m=BGM[bgmMode]||BGM.stage, i=bgmStep%32;
+  const BGM_MS = { title:260, stage:150, boss:118, pinch:104 };
+  function bgmInterval(){ return BGM_MS[bgmMode]||150; }   // 場面ごとのテンポ
+  function tickBGM(){ if(!ac) return; const boss=bgmMode==='boss', ttl=bgmMode==='title', pin=bgmMode==='pinch';
+    const m=BGM[bgmMode]||BGM.stage, i=bgmStep%32;
     const L=m.lead[i], B=m.bass[i];
+    if(ttl){                                        // タイトル/結果：柔らかい持続音のみ・打楽器なし
+      if(B!=null){ tone(midi(B), 1.10, 'sine', 0.075); tone(midi(B+7), 1.10, 'sine', 0.030); }
+      if(L!=null){ tone(midi(L), 1.00, 'triangle', 0.045); tone(midi(L+12), 0.90, 'sine', 0.018); }
+      bgmStep=(bgmStep+1)%32; return;
+    }
     if(B!=null) tone(midi(B-12), boss?0.16:0.20, 'triangle', boss?0.10:0.09);
     if(L!=null) tone(midi(L), 0.16, 'square', boss?0.055:0.05);
+    if(pin){
+      if(L!=null && i%2===0) tone(midi(L-12), 0.10, 'sawtooth', 0.045);   // にじり寄る低音
+      if(i%4===0) noise(0.13, 120, 0.13);                                  // 鼓動
+      if(i%4===2) noise(0.05, 2400, 0.03);                                 // 刻み
+      bgmStep=(bgmStep+1)%32; return;
+    }
     if(boss){
       if(L!=null && i%2===0) tone(midi(L-12), 0.12, 'sawtooth', 0.04);                 // 唸るオクターブ下
       if(i%8===0){ tone(midi(33), 0.55, 'sawtooth', 0.05); tone(midi(39), 0.55, 'sawtooth', 0.035); } // 低音トライトーン(A1+D#2)
@@ -145,7 +171,24 @@ const SFX = (function(){
     fanfare(){ [60,64,67,72,76,79].forEach((m,i)=>setTimeout(()=>tone(midi(m),0.22,'square',0.11), i*130)); },
     hit(){ slide(300,80,0.25,'sawtooth',0.16); },
     alert(){ for(let i=0;i<3;i++) setTimeout(()=>{ slide(960,640,0.20,'square',0.085); slide(720,480,0.20,'square',0.05); }, i*260); },
-    lose(){ [67,63,60,55,48].forEach((m,i)=>setTimeout(()=>tone(midi(m),0.30,'sawtooth',0.14), i*150)); },
+    // --- 節目のジングル（M3） ---
+    stageClear(){   // 戦域突破：二声の凱歌＋締めの和音
+      [[72,0],[76,120],[79,240],[84,360],[83,480],[84,600]].forEach(([m,d])=>setTimeout(()=>{
+        tone(midi(m),0.24,'square',0.10); tone(midi(m-12),0.24,'triangle',0.055); },d));
+      setTimeout(()=>{ [72,76,79,84].forEach(m=>tone(midi(m),0.9,'triangle',0.055)); noise(0.10,3000,0.35); }, 760);
+    },
+    extend(){       // 補給＝残機+1（1UP）
+      [79,84,88].forEach((m,i)=>setTimeout(()=>{ tone(midi(m),0.14,'square',0.09); tone(midi(m+7),0.10,'sine',0.03); }, i*70));
+    },
+    bossAppear(){   // ボス出現の重い一撃
+      slide(240,70,0.7,'sawtooth',0.13); noise(0.20,180,0.5);
+      setTimeout(()=>{ tone(midi(45),0.6,'sawtooth',0.07); tone(midi(51),0.6,'sawtooth',0.05); }, 180);
+    },
+    lose(){         // ゲームオーバー：崩れ落ちる二声＋低い残響
+      [67,63,60,55,48].forEach((m,i)=>setTimeout(()=>{
+        tone(midi(m),0.30,'sawtooth',0.14); tone(midi(m-12),0.34,'triangle',0.06); }, i*150));
+      setTimeout(()=>{ tone(midi(36),1.4,'triangle',0.09); tone(midi(43),1.4,'sine',0.04); noise(0.06,140,0.9); }, 800);
+    },
   };
 })();
 
@@ -164,13 +207,24 @@ const FX = (function(){
   };
 })();
 
-const Store = { key:'gradius_like_best', get(){ return +(localStorage.getItem(this.key)||0); }, set(v){ localStorage.setItem(this.key, v); } };
+const Store = { key:'gradius_like_best', get(){ return +(localStorage.getItem(this.key)||0); }, set(v){ localStorage.setItem(this.key, v); },
+  // ---- v16: 戦績の永続記録（S5 はまり要素）: 最高到達戦域・通算ボス撃破・出撃回数 ----
+  rkey:'midorius_record_v1', _c:null,
+  rec(){ if(this._c) return this._c;   // 毎フレーム参照するのでキャッシュする
+    try{ this._c=Object.assign({stage:0,boss:0,runs:0}, JSON.parse(localStorage.getItem(this.rkey)||'{}')); }catch(e){ this._c={stage:0,boss:0,runs:0}; }
+    return this._c; },
+  saveRec(r){ this._c=r; try{ localStorage.setItem(this.rkey, JSON.stringify(r)); }catch(e){} },
+  addRun(){ const r=this.rec(); r.runs++; this.saveRec(r); },
+  addBoss(){ const r=this.rec(); r.boss++; this.saveRec(r); },
+  markStage(st){ const r=this.rec(); if(st>r.stage){ r.stage=st; this.saveRec(r); return true; } return false; },
+};
 
 function clearBG(){ const g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#0a0f24'); g.addColorStop(1,'#05060f'); ctx.fillStyle=g; ctx.fillRect(0,0,W,H); }
-function overlay(title,col,sub,sub2){ ctx.fillStyle='rgba(0,0,0,0.66)'; ctx.fillRect(0,0,W,H); ctx.textAlign='center';
+function overlay(title,col,sub,sub2,sub3){ ctx.fillStyle='rgba(0,0,0,0.66)'; ctx.fillRect(0,0,W,H); ctx.textAlign='center';
   ctx.fillStyle=col; ctx.font='bold 52px "Segoe UI"'; ctx.fillText(title,W/2,H/2-12);
   ctx.fillStyle='#cdd'; ctx.font='18px "Segoe UI"'; ctx.fillText(sub,W/2,H/2+34);
-  if(sub2){ ctx.fillStyle='#8aa'; ctx.font='14px "Segoe UI"'; ctx.fillText(sub2,W/2,H/2+64); } }
+  if(sub2){ ctx.fillStyle='#8aa'; ctx.font='14px "Segoe UI"'; ctx.fillText(sub2,W/2,H/2+64); }
+  if(sub3){ ctx.fillStyle='#ffd23f'; ctx.font='bold 16px "Segoe UI"'; ctx.fillText(sub3,W/2,H/2+94); } }   // v16: 戦績の行
 
 let lastT=0;
 function loop(t){ const dt = lastT ? Math.min(50, t-lastT) : 16; lastT=t;
@@ -183,7 +237,7 @@ function loop(t){ const dt = lastT ? Math.min(50, t-lastT) : 16; lastT=t;
 const CONFIG = {
   baseSpeed:0.26, speedStep:0.055, maxSpeed:4,
   bulletSpeed:0.72, laserSpeed:1.15, ebulletSpeed:0.30, bossBulletSpeed:0.28,
-  capSpeed:0.08, startLives:3, invulnMs:1600, zoneX:0.66,
+  capSpeed:0.08, startLives:3, invulnMs:2400, zoneX:0.66,   // v16: 復帰直後の無敵を1600→2400msへ（体勢を立て直す時間）
   fireInterval:160, laserInterval:220, missileInterval:500,
   maxOptions:4, stageDuration:30000, warnMs:1700, interMs:2800,
   groundScroll:0.10, ambushFromStage:3,
@@ -197,9 +251,98 @@ const BOSS_KINDS = [
   { r:54, col:'#33586e', core:'#39d0ff', hp:96, name:'拡散ツイン' },
   { r:64, col:'#6e3b4a', core:'#ffd23f', hp:112, name:'回転リング' },
 ];
+// ---- v18: ボスの改修段階（S3 難易度設計）----
+// 第四戦域からは同じ3体をただ硬くして出し直すだけ＝終盤が「作業」になっていた。
+// 一巡するごとに敵が“改修”され、名前も攻撃の性格も変わる。数字ではなく中身を変える。
+const BOSS_TIER = [
+  { pre:'',        note:'' },
+  { pre:'改・',     note:'追尾弾を撃ってくる ― 止まるな' },
+  { pre:'殲滅型・', note:'追尾弾＋体当たり突進 ― 赤い輪が出たら退け' },
+];
+const TIER_ITV = [1.00, 0.90, 0.82];   // 改修が進むほど手数が増える（射撃間隔の倍率）
+function bossTierOf(st){ return Math.min(BOSS_TIER.length-1, Math.floor((st-1)/BOSS_KINDS.length)); }
+function bossNameFor(st){ return BOSS_TIER[bossTierOf(st)].pre + BOSS_KINDS[(st-1)%BOSS_KINDS.length].name; }
+// 侵攻の物語：ステージごとの戦域名と一言ロア（S2 進行イベント）。5戦域以降は深宙域へ。
+const SECTORS = [
+  { name:'第一戦域 ミドリス上空',  lore:'故郷の空を、渡すな' },
+  { name:'第二戦域 残骸の海',      lore:'墜ちた艦隊の墓場を抜けろ' },
+  { name:'第三戦域 灰の要塞帯',    lore:'敵の防衛線が牙を剥く' },
+  { name:'第四戦域 軌道の環',      lore:'包囲をこじ開けろ' },
+  { name:'第五戦域 帝国中枢',      lore:'敵母星が、見えてきた' },
+  /* ---- v20: ここから先が新設（S2 物語）----
+     v19まで、物語は第五戦域「敵母星が、見えてきた」で言葉が尽き、以降はすべて
+     「深宙域 SECTOR 6」「SECTOR 7」…という番号だけの無名の空だった。
+     つまり“見えてきた敵母星”にはいつまでも辿り着かず、話の続きが用意されていない。
+     反攻から玉座、そしてその先までを戦域として書き足し、物語を最後まで進める。 */
+  { name:'第六戦域 中枢外郭',      lore:'空は取り戻した ―― ここからは、こちらが攻める番だ' },
+  { name:'第七戦域 増殖炉プラント',lore:'帝国の艦は、この炉で生まれ続けている' },
+  { name:'第八戦域 玉座回廊',      lore:'最奥の門が、音もなく開いた' },
+  { name:'第九戦域 崩れゆく中枢',  lore:'巨大な母星が、内側から軋みはじめる' },
+  { name:'第十戦域 深宙の残響',    lore:'玉座は落ちた。それでも、侵攻は止まらない' },
+];
+function sectorFor(st){ return st<=SECTORS.length ? SECTORS[st-1] : { name:'深宙域 SECTOR '+st, lore:'記録だけが、まだ君の先を行っている' }; }
+/* ---- v20: 章立て（S2 物語）----
+   戦域の一言ロアはあっても「話がどこまで進んだのか」を示すものが無かった。
+   四つの章に区切り、章が変わる戦域では幕間でそれを告げる。 */
+const CHAPTERS = [
+  { from:1,  title:'第一章  防衛篇 ―― 故郷の空',     note:'ミドリスの空を守り抜く。まずは、生き延びること' },
+  { from:4,  title:'第二章  突破篇 ―― 包囲を越えて', note:'守りから攻めへ。敵母星へ至る道をこじ開ける' },
+  { from:6,  title:'第三章  反攻篇 ―― 敵母星の懐へ', note:'追われる側が、追う側になった。玉座はこの先だ' },
+  { from:10, title:'終章    残響篇 ―― 果てなき深宙', note:'物語は終わった。ここから先は、君自身の記録との戦い' },
+];
+function chapterFor(st){ let c=CHAPTERS[0]; for(const k of CHAPTERS){ if(st>=k.from) c=k; } return c; }
+function chapterHead(st){ return CHAPTERS.some(k=>k.from===st); }   // その戦域が章の切れ目かどうか
+/* ---- v19: 戦域ごとの雑魚編成（S3 難易度設計）----
+   v18まで spawnEnemy() の抽選表は全戦域まったく同一で、戦域で変わるのは「湧く頻度」と「敵の速度」だけ。
+   つまり道中の中身は第一戦域から深宙域まで一度も変わらず、増えるのは数字だけだった＝ボスの改修(v18)で
+   終盤の作業感は解けたのに、その手前の何分間かはずっと同じ顔ぶれのまま、という宿題が残っていた。
+   ここで戦域ごとに「出てくる顔ぶれ」を変え、しかも何が来る戦域なのかを開戦前に言葉で知らせる。 */
+const ENEMY_DEF = {
+  carrier:{ col:'#ff4d6d',wing:'#a32338',r:16,hp:3,score:300,pattern:'sine',    spd:0.085, carry:true, amp:()=>30+randi(50) },
+  fast:   { col:'#ff9f1c',wing:'#a35e10',r:11,hp:1,score:150,pattern:'dive',    spd:0.22 },
+  wave:   { col:'#39d0ff',wing:'#1d6f8a',r:12,hp:1,score:100,pattern:'sine',    spd:0.13, amp:()=>44+randi(54), shootP:0.4 },
+  zako:   { col:'#7ec8ff',wing:'#3a6a90',r:12,hp:1,score:80, pattern:'straight',spd:0.14, shootP:0.3 },
+  zigzag: { col:'#9be15a',wing:'#4a7a28',r:12,hp:1,score:120,pattern:'zigzag',  spd:0.12, amp:()=>60+randi(40), zig:true },
+  gunner: { col:'#b06bff',wing:'#5a36a0',r:14,hp:2,score:200,pattern:'straight',spd:0.08, shoots:true, fireInt:1100 },
+  spinner:{ col:'#ff5ad0',wing:'#a02080',r:13,hp:2,score:220,pattern:'straight',spd:0.07, shoots:true, fireInt:1300 },
+  bomber: { col:'#c0c0d0',wing:'#5a5a72',r:19,hp:4,score:400,pattern:'straight',spd:0.06, shoots:true, fireInt:1500 },
+};
+function makeEnemyOf(type, e){
+  const d = ENEMY_DEF[type] || ENEMY_DEF.zako;
+  Object.assign(e, { type, col:d.col, wing:d.wing, r:d.r, hp:d.hp, score:d.score, pattern:d.pattern, spd:d.spd });
+  if(d.carry) e.carry = true;
+  if(d.amp)   e.amp   = d.amp();
+  if(d.zig)   e.zvy   = (Math.random()<0.5 ? 0.16 : -0.16);
+  if(d.fireInt) e.fireInt = d.fireInt;
+  if(d.shoots) e.shoots = true;
+  else if(d.shootP !== undefined) e.shoots = Math.random() < d.shootP;
+  return e;
+}
+// 戦域ごとの顔ぶれ。数字は相対の重み（合計は自由）。第六戦域以降は最後の「精鋭」編成を使い続ける。
+const SECTOR_MIX = [
+  // ※どの戦域でも carrier（補給カプセルを落とす赤い船）は12以上を保つ＝装備が育たなくなる編成を作らない。
+  { tag:'軽装の哨戒隊',       hint:'撃ってくる敵は少ない ― まず動きに慣れろ',
+    w:{ zako:28, wave:26, fast:16, zigzag:14, carrier:12, gunner:4 } },
+  { tag:'残骸あさりの回収船団', hint:'補給を積んだ赤い船が多い ― ここで装備を整えろ',
+    w:{ carrier:24, zigzag:22, zako:18, wave:16, fast:12, gunner:8 } },
+  { tag:'要塞の砲兵中隊',     hint:'撃ってくる敵が主力 ― 撃たれる前に潰せ',
+    w:{ gunner:22, bomber:12, zako:16, wave:16, spinner:10, carrier:12, fast:6 } },
+  { tag:'高速迎撃部隊',       hint:'速い敵と回転弾幕 ― 止まると囲まれる',
+    w:{ fast:26, spinner:20, zigzag:18, gunner:14, carrier:12, wave:10 } },
+  { tag:'帝国近衛の精鋭',     hint:'全兵科が揃う ― これまでの全部が来る',
+    w:{ bomber:16, spinner:16, gunner:16, fast:16, carrier:12, zigzag:12, wave:8, zako:4 } },
+];
+function mixFor(st){ return SECTOR_MIX[Math.min(SECTOR_MIX.length, Math.max(1,st)) - 1]; }
+function pickFromMix(w){ let tot=0; for(const k in w) tot+=w[k]; let r=Math.random()*tot;
+  for(const k in w){ r-=w[k]; if(r<=0) return k; } return 'zako'; }
 // 裏コマンド（コナミコマンド）：↑↑↓↓←→←→ A B
 const KONAMI = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','KeyA','KeyB'];
 let konamiIdx = 0;
+// ---- v17: 戦域到達コンティニュー（S3 難易度設計）----
+// 倒れた戦域からやり直せる。ただし1回の出撃で3回まで＝緊張は残す。
+const CONTI_MAX = 3;
+let contiLeft = CONTI_MAX;
+function canConti(){ return state==='over' && !G.win && contiLeft>0 && G.stage>=2; }
 
 function makeStars(){ const s=[]; for(let i=0;i<130;i++) s.push({ x:Math.random()*W, y:Math.random()*H, spd:0.02+Math.random()*0.18, sz:Math.random()<0.8?1:2 }); return s; }
 
@@ -212,6 +355,9 @@ function newGame(){
     grounds:[], gspawnT:1200, alertT:0, ambushT:6000,
     score:0, lives:CONFIG.startLives, time:0, spawnT:700, flash:0,
     boss:null, stage:1, stageT:0, warnT:0, interT:0, win:false,
+    recNew:false,                                  // v16: この出撃で最高到達戦域を更新したか
+    conti:false, contiT:0,                         // v17: コンティニューで再開した出撃か／再開バナーの残り時間
+    mixT:3200,                                     // v19: 「この戦域はどんな顔ぶれか」を伝える帯の残り時間
   };
 }
 
@@ -258,15 +404,7 @@ function applyMaxPower(){            // 裏コマンド：全パワーアップ
 function spawnEnemy(){
   const y=40+Math.random()*(H-120);
   const e={ x:W+24, y, baseY:y, t:0, fireT:600+randi(1100) };
-  const r=Math.random();
-  if(r<0.12)      Object.assign(e,{type:'carrier',col:'#ff4d6d',wing:'#a32338',r:16,hp:3,score:300,pattern:'sine',amp:30+randi(50),spd:0.085,carry:true});
-  else if(r<0.26) Object.assign(e,{type:'fast',   col:'#ff9f1c',wing:'#a35e10',r:11,hp:1,score:150,pattern:'dive',  spd:0.22});
-  else if(r<0.41) Object.assign(e,{type:'wave',   col:'#39d0ff',wing:'#1d6f8a',r:12,hp:1,score:100,pattern:'sine',  amp:44+randi(54),spd:0.13,shoots:Math.random()<0.4});
-  else if(r<0.55) Object.assign(e,{type:'zako',   col:'#7ec8ff',wing:'#3a6a90',r:12,hp:1,score:80, pattern:'straight',spd:0.14,shoots:Math.random()<0.3});
-  else if(r<0.68) Object.assign(e,{type:'zigzag', col:'#9be15a',wing:'#4a7a28',r:12,hp:1,score:120,pattern:'zigzag',amp:60+randi(40),spd:0.12,zvy:(Math.random()<0.5?0.16:-0.16)});
-  else if(r<0.80) Object.assign(e,{type:'gunner', col:'#b06bff',wing:'#5a36a0',r:14,hp:2,score:200,pattern:'straight',spd:0.08,shoots:true,fireInt:1100});
-  else if(r<0.91) Object.assign(e,{type:'spinner',col:'#ff5ad0',wing:'#a02080',r:13,hp:2,score:220,pattern:'straight',spd:0.07,shoots:true,fireInt:1300});
-  else            Object.assign(e,{type:'bomber', col:'#c0c0d0',wing:'#5a5a72',r:19,hp:4,score:400,pattern:'straight',spd:0.06,shoots:true,fireInt:1500});
+  makeEnemyOf(pickFromMix(mixFor(G.stage).w), e);   // v19: 戦域ごとの編成表から抽選（従来は全戦域で同じ表だった）
   e.spd *= 1 + (G.stage-1)*0.10 + Math.min(0.5, G.time/220000);
   G.enemies.push(e);
 }
@@ -282,13 +420,31 @@ function hitC(ax,ay,ar,bx,by,br){ const dx=ax-bx,dy=ay-by,rr=ar+br; return dx*dx
 // ---- 地上物（v11：地上戦アップデート） ----
 const GROUND_Y = H-24;
 function gCY(g){ return GROUND_Y - Math.min(g.h*0.5, 18); }   // 地上物の当たり中心
+/* ---- v20: 戦域ごとの地上編成（S3 難易度設計）----
+   v19で空の雑魚は戦域ごとに顔ぶれが変わるようになったが、地上は `r<0.30 / r<0.48 / r<0.78`
+   の固定しきい値のままで、第一戦域も深宙域もまったく同じ割合だった＝空だけが変化し、
+   地上は最後まで景色が変わらない。空の編成表 `SECTOR_MIX` と対になる地上の編成表を置き、
+   「その戦域で空から来るもの」と「地の上で待っているもの」が噛み合うようにする。 */
+const GROUND_DEF = {
+  tree: { type:'tree', h:30, hp:1, score:30,  cr:10 },
+  pylon:{ type:'pylon',h:58, hp:2, score:60,  cr:15 },
+  tank: { type:'tank', h:20, hp:3, score:350, cr:13 },   // 撃ってくる
+  base: { type:'base', h:28, hp:6, score:600, cr:15 },   // ドローンを飛ばす
+};
+// ※どの戦域でも tank+base の合計は30以上を保つ＝MISSILE（対地弾）の使い道が消える編成を作らない。
+const GROUND_MIX = [
+  { tag:'手つかずの緑地',   w:{ tree:46, pylon:20, tank:28, base:6  } },   // 空も「軽装の哨戒隊」＝まず動きに慣れる戦域
+  { tag:'墜ちた艦の残骸',   w:{ pylon:40, tree:20, tank:24, base:16 } },   // 空は「回収船団」＝墓場の景色を地上でも
+  { tag:'対空砲の陣地',     w:{ tank:40, base:26, pylon:22, tree:12 } },   // 空は「砲兵中隊」＝上下から撃たれる戦域
+  { tag:'高速道の中継塔',   w:{ pylon:38, tank:26, tree:20, base:16 } },   // 空は「高速迎撃部隊」＝地上は背の高い障害で逃げ場を狭める
+  { tag:'帝国の要塞地帯',   w:{ base:34, tank:32, pylon:24, tree:10 } },   // 空は「近衛の精鋭」＝地上も全部が牙を剥く
+];
+function gmixFor(st){ return GROUND_MIX[Math.min(GROUND_MIX.length, Math.max(1,st)) - 1]; }
 function spawnGround(){
-  const st=G.stage, r=Math.random();
-  const g={ x:W+40, t:0 };
-  if(r<0.30)      Object.assign(g,{type:'tree', h:30, hp:1, score:30, cr:10});
-  else if(r<0.48) Object.assign(g,{type:'pylon',h:58, hp:2, score:60, cr:15});
-  else if(r<0.78 || st<2) Object.assign(g,{type:'tank', h:20, hp:3, score:350, cr:13, fireT:900+randi(900)});
-  else            Object.assign(g,{type:'base', h:28, hp:6, score:600, cr:15, launchT:1400+randi(1200)});
+  const kind = pickFromMix(gmixFor(G.stage).w);
+  const g = Object.assign({ x:W+40, t:0 }, GROUND_DEF[kind]);
+  if(kind==='tank') g.fireT   = 900+randi(900);
+  if(kind==='base') g.launchT = 1400+randi(1200);
   G.grounds.push(g);
 }
 function groundFire(g){
@@ -316,8 +472,9 @@ function spawnAmbush(){
   for(let i=0;i<n;i++){
     const fromTop=(i%2===0);
     const e={ t:0, fireT:900+randi(900) };
-    if(Math.random()<0.5) Object.assign(e,{type:'fast', col:'#ff9f1c',wing:'#a35e10',r:11,hp:1,score:150,pattern:'dive',spd:0.22});
-    else Object.assign(e,{type:'zigzag',col:'#9be15a',wing:'#4a7a28',r:12,hp:1,score:120,pattern:'zigzag',amp:50+randi(40),zvy:(Math.random()<0.5?0.16:-0.16),spd:0.13});
+    // 奇襲は身軽な2種のまま（鈍重な機は背後から追いつけない）。v19では定義表を共有するだけで挙動は従来どおり。
+    makeEnemyOf(Math.random()<0.5 ? 'fast' : 'zigzag', e);
+    if(e.type==='zigzag'){ e.amp=50+randi(40); e.spd=0.13; }
     if(fromTop){ e.amb='top'; e.x=W*0.35+Math.random()*W*0.5; e.y=-24-i*28; e.ambVy=0.20; e.tgt=60+Math.random()*(H*0.5); }
     else { e.amb='left'; e.x=-26-i*32; e.y=60+Math.random()*(H-200); e.ambVx=0.30; e.tgt=W*(0.55+Math.random()*0.25); }
     e.baseY=e.y; e.spd*=1+(G.stage-1)*0.10;
@@ -332,6 +489,15 @@ function playerHit(){
   w.meter=-1;
   if(G.lives<0){ gameOver(); return; }
   p.x=120; p.y=H/2; p.invuln=CONFIG.invulnMs;
+  // ---- v16: 復帰の理不尽をなくす（S3 難易度設計）----
+  // ①画面上の敵弾を一掃＝復活した瞬間に置き弾で即死する事故を無くす
+  for(const b of G.ebullets) b.dead=true;
+  FX.burst(p.x,p.y,'#9fd8ff',22,6.5);
+  // ②補給カプセルを前方に配置＝失った装備を取り返す道を必ず残す（ボス戦は雑魚が湧かず自力復帰不能のため1個多い）
+  const n = G.boss ? 3 : 2;
+  for(let i=0;i<n;i++) dropCapsule(300+i*130, H/2 + (i%2?-70:70));
+  // ③ボスの追撃を一拍待たせる
+  if(G.boss) G.boss.fireT = Math.max(G.boss.fireT, 1400);
 }
 function dropCapsule(x,y){ G.caps.push({x,y,t:0}); }
 function killEnemy(e){
@@ -342,12 +508,18 @@ function killEnemy(e){
 }
 
 // ---- ボス（3種） ----
-function startBoss(){ if(G.boss) return; const kind=(G.stage-1)%3, B=BOSS_KINDS[kind];
-  const mh=B.hp + (G.stage-1)*40;
-  G.boss={ x:W+100, y:H/2, tx:W-160, r:B.r, hp:mh, maxhp:mh, t:0, fireT:1100, enterDone:false, flash:0, shotN:0, kind, col:B.col, core:B.core, name:B.name };
-  SFX.setBGMMode('boss');
+function startBoss(){ if(G.boss) return; const kind=(G.stage-1)%BOSS_KINDS.length, B=BOSS_KINDS[kind];
+  const tier=bossTierOf(G.stage);
+  // v18: 耐久の伸びは5戦域で頭打ち＋改修ぶんの上乗せ。以前は+40/戦域で青天井＝終盤が「硬いだけの長い作業」だった。
+  const mh=B.hp + Math.min(G.stage-1,5)*36 + tier*40;
+  G.boss={ x:W+100, y:H/2, tx:W-160, r:B.r, hp:mh, maxhp:mh, t:0, fireT:1100, enterDone:false, flash:0, shotN:0, kind, col:B.col, core:B.core,
+           tier, name:BOSS_TIER[tier].pre+B.name,
+           teleT:0, dashT:0, backT:0, dvx:0, dvy:0, chargeT: tier>=2 ? 5600 : -1 };   // v18: 殲滅型の突進タイマー
+  SFX.setBGMMode('boss'); SFX.bossAppear();
 }
 function bossBullet(b,a,sp){ G.ebullets.push({ x:b.x-b.r*0.4, y:b.y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp }); }
+// v18: 追尾弾（改修1段階〜）。ゆっくり曲がるので「動き続ければ避けられる」＝居座り撃ちを崩すための弾。
+function homBullet(b,a,sp){ G.ebullets.push({ x:b.x-b.r*0.4, y:b.y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp, hom:2600, hsp:sp }); }
 function bossAttack(b){
   const p=G.p, ratio=b.hp/b.maxhp, sp=CONFIG.bossBulletSpeed, aim=Math.atan2(p.y-b.y,p.x-b.x); b.shotN++;
   if(b.kind===0){
@@ -363,26 +535,51 @@ function bossAttack(b){
     else if(ratio>0.33){ const a=b.t*0.003; for(let k=0;k<4;k++) bossBullet(b, a+k*Math.PI/2, sp); if(b.shotN%2===1) for(let i=0;i<3;i++) bossBullet(b, aim+(i-1)*0.22, sp); }
     else { for(let i=0;i<18;i++) bossBullet(b, i/18*TAU+b.t*0.001, sp); if(b.shotN%3===0) for(let i=0;i<5;i++) bossBullet(b, aim+(i-2)*0.18, sp*1.1); }
   }
+  // v18: 改修段階の上乗せ＝1段階以上は追尾弾を混ぜる（数を増やすのではなく、避け方を変えさせる）
+  if(b.tier>=1 && b.shotN%2===0){ const n=b.tier>=2?3:2; for(let i=0;i<n;i++) homBullet(b, aim+(i-(n-1)/2)*0.45, sp*0.60); }
   SFX.enemyShoot();
 }
-function bossFireInterval(b){ const r=b.hp/b.maxhp;
-  if(b.kind===2) return r>0.66?560 : r>0.33?640 : 540;
-  if(b.kind===1) return r>0.66?1000 : r>0.33?760 : 560;
-  return r>0.66?1100 : r>0.33?820 : 560;
+function bossFireInterval(b){ const r=b.hp/b.maxhp, m=TIER_ITV[b.tier||0];
+  if(b.kind===2) return (r>0.66?560 : r>0.33?640 : 540)*m;
+  if(b.kind===1) return (r>0.66?1000 : r>0.33?760 : 560)*m;
+  return (r>0.66?1100 : r>0.33?820 : 560)*m;
 }
 function updateBoss(dt){
   const b=G.boss; b.t+=dt; if(b.flash>0) b.flash-=dt;
   if(!b.enterDone){ b.x-=0.12*dt; if(b.x<=b.tx){ b.x=b.tx; b.enterDone=true; } return; }
-  if(b.kind===1){ b.y=H/2+Math.sin(b.t*0.0026)*(H*0.32); }
-  else if(b.kind===2){ b.y=H/2+Math.sin(b.t*0.002)*(H*0.30); b.x=b.tx+Math.sin(b.t*0.001)*36; }
-  else { b.y=H/2+Math.sin(b.t*0.0016)*(H*0.28); }
+  // ---- v18: 殲滅型（改修2段階）の体当たり突進 ----
+  // 必ず赤い輪＋「突進！」で予告してから来る＝理不尽にならないように一拍置く。
+  if(b.tier>=2){
+    if(b.teleT>0){ b.teleT-=dt;
+      if(b.teleT<=0){ const p=G.p, dx=p.x-b.x, dy=p.y-b.y, d=Math.hypot(dx,dy)||1;
+        b.dvx=dx/d*0.55; b.dvy=dy/d*0.55; b.dashT=520; }
+      return; }
+    if(b.dashT>0){ b.dashT-=dt;
+      b.x=clamp(b.x+b.dvx*dt, b.r*0.8, W+120); b.y=clamp(b.y+b.dvy*dt, b.r*0.6, H-b.r*0.6);
+      if(b.dashT<=0) b.backT=1100;
+      return; }
+    if(b.backT>0){ b.backT-=dt; b.x+=(b.tx-b.x)*Math.min(1, 0.006*dt); if(b.backT<=0) b.chargeT=6200+randi(2200); }
+    else { b.chargeT-=dt; if(b.chargeT<=0){ b.teleT=700; SFX.alert(); return; } }
+  }
+  // 定位置の揺れ（突進から戻る時に位置が飛ばないよう、代入ではなく追従にした）
+  const amp = b.kind===1 ? H*0.32 : b.kind===2 ? H*0.30 : H*0.28;
+  const sp2 = b.kind===1 ? 0.0026 : b.kind===2 ? 0.002 : 0.0016;
+  const ty = H/2 + Math.sin(b.t*sp2)*amp, k=Math.min(1, 0.012*dt);
+  b.y += (ty-b.y)*k;
+  const tx2 = b.kind===2 ? b.tx+Math.sin(b.t*0.001)*36 : b.tx;
+  b.x += (tx2-b.x)*k;
+  if(b.backT>0) return;                     // 突進の戻り中は撃たない（連続で嵌めない）
   b.fireT-=dt; if(b.fireT<=0){ bossAttack(b); b.fireT=bossFireInterval(b); }
 }
 function killBoss(){
   const b=G.boss; G.score+=5000; FX.shake(20); SFX.bigExplode();
   for(let i=0;i<7;i++) setTimeout(()=>FX.burst(b.x+(Math.random()-0.5)*90, b.y+(Math.random()-0.5)*80, rngPick(['#ffce4d','#ff6a4d','#fff']),20,5), i*110);
-  G.boss=null; G.stage++; G.interT=CONFIG.interMs; G.stageT=0; G.warnT=0; G.spawnT=900; G.ambushT=6000; G.alertT=0;
-  G.enemies=[]; G.ebullets=[]; G.lives=Math.min(5,G.lives+1); SFX.fanfare(); SFX.setBGMMode('play');
+  G.boss=null; G.stage++; G.interT=CONFIG.interMs; G.stageT=0; G.warnT=0; G.spawnT=900; G.ambushT=6000; G.alertT=0; G.mixT=3200;   // v19: 新しい戦域の編成を告げ直す
+  Store.addBoss(); if(Store.markStage(G.stage)) G.recNew=true;   // v16: 到達戦域の自己ベストは撃破した瞬間に確定させる
+
+  G.enemies=[]; G.ebullets=[]; const before=G.lives; G.lives=Math.min(5,G.lives+1);
+  SFX.stageClear(); if(G.lives>before) setTimeout(()=>SFX.extend(), 980);   // 戦域突破ジングル→補給(1UP)
+  SFX.setBGMMode(G.lives<=0?'pinch':'play');
 }
 
 function update(dt){
@@ -417,9 +614,14 @@ function update(dt){
 
   if(G.alertT>0){ G.alertT-=dt; if(G.alertT<=0){ spawnAmbush(); G.ambushT=Math.max(3500, 8000-(G.stage-CONFIG.ambushFromStage)*700)+randi(4000); } }  // アラート→奇襲
 
+  // 場面別BGMの優先度：危機(最後の1機)＞ボス戦＞通常
+  SFX.setBGMMode(G.lives<=0 ? 'pinch' : (G.boss ? 'boss' : 'play'));
+
+  if(G.contiT>0){ G.contiT-=dt; }                                  // v17: コンティニュー再開バナー
   if(G.interT>0){ G.interT-=dt; }                                  // ステージ切替の小休止
   else if(G.warnT>0){ G.warnT-=dt; if(G.warnT<=0) startBoss(); }    // ボス警告→出現
   else if(!G.boss){
+    if(G.mixT>0) G.mixT-=dt;                                       // v19: 編成の告知はバナーが引いてから数えはじめる
     G.stageT+=dt; G.spawnT-=dt;
     if(G.spawnT<=0){ spawnEnemy(); G.spawnT=Math.max(240, 780 - G.stage*40)*(0.7+Math.random()*0.6); }
     G.gspawnT-=dt;
@@ -450,7 +652,11 @@ function update(dt){
     if(g.type==='tank' && g.x<W-8 && g.x>30){ g.fireT-=dt; if(g.fireT<=0){ groundFire(g); g.fireT=Math.max(650, 1500-G.stage*90)+randi(600); } }
     if(g.type==='base' && g.x<W-30 && g.x>60){ g.launchT-=dt; if(g.launchT<=0){ launchDrone(g); g.launchT=Math.max(1200, 2600-G.stage*160)+randi(800); } }
   }
-  for(const b of G.ebullets){ b.x+=b.vx*dt; b.y+=b.vy*dt; if(b.x<-12||b.x>W+12||b.y<-12||b.y>H+12) b.dead=true; }
+  for(const b of G.ebullets){
+    if(b.hom>0){ b.hom-=dt;                              // v18: 追尾弾はゆっくり向きを変える（動き続ければ振り切れる）
+      const dx=p.x-b.x, dy=p.y-b.y, d=Math.hypot(dx,dy)||1, kk=Math.min(1, 0.0022*dt);
+      b.vx += (dx/d*b.hsp - b.vx)*kk; b.vy += (dy/d*b.hsp - b.vy)*kk; }
+    b.x+=b.vx*dt; b.y+=b.vy*dt; if(b.x<-12||b.x>W+12||b.y<-12||b.y>H+12) b.dead=true; }
   for(const c of G.caps){ c.t+=dt; c.x-=CONFIG.capSpeed*dt; if(c.x<-20) c.dead=true; }
   if(G.boss) updateBoss(dt);
 
@@ -611,6 +817,12 @@ function drawEnemy(e){
   ctx.restore();
 }
 function drawBoss(b){
+  // v18: 突進の予告（赤い輪＋文字）。これが出てから実際に来るまで0.7秒ある。
+  if(b.teleT>0){ const bl=(clock()/90|0)%2===0; ctx.save();
+    ctx.strokeStyle=bl?'#ff4d4d':'#ffd23f'; ctx.lineWidth=5;
+    ctx.beginPath(); ctx.arc(b.x,b.y,b.r+16,0,TAU); ctx.stroke();
+    ctx.fillStyle=bl?'#ff9f9f':'#ffe27a'; ctx.font='bold 15px "Segoe UI"'; ctx.textAlign='center';
+    ctx.fillText('突進！', b.x, b.y-b.r-24); ctx.textAlign='left'; ctx.restore(); }
   const bim=sprReady('boss'+(b.kind+1));
   if(bim){ ctx.save(); ctx.translate(b.x,b.y);
     if(b.kind===2) ctx.rotate(b.t*0.0012);          // 回転リングはゆっくり回す
@@ -659,7 +871,9 @@ function render(){
   for(const o of optionPositions()) drawOption(o);
   for(const m of G.missiles){ ctx.fillStyle='#ffcf6b'; ctx.beginPath(); ctx.moveTo(m.x+6,m.y); ctx.lineTo(m.x-5,m.y-5); ctx.lineTo(m.x-5,m.y+5); ctx.closePath(); ctx.fill(); }
   for(const b of G.bullets){ if(b.laser){ ctx.fillStyle='#aef6ff'; ctx.fillRect(b.x-18,b.y-3,36,6); ctx.fillStyle='#fff'; ctx.fillRect(b.x-18,b.y-1,36,2); } else { ctx.fillStyle='#ffe27a'; ctx.fillRect(b.x-6,b.y-1.8,12,3.6); } }
-  for(const b of G.ebullets){ ctx.fillStyle='#ff7a4d'; ctx.beginPath(); ctx.arc(b.x,b.y,5,0,TAU); ctx.fill(); ctx.fillStyle='#ffd2b0'; ctx.beginPath(); ctx.arc(b.x,b.y,2,0,TAU); ctx.fill(); }
+  for(const b of G.ebullets){ const hm=b.hom>0;   // v18: 追尾弾は紫で区別（見分けられないと理不尽になる）
+    ctx.fillStyle=hm?'#c07aff':'#ff7a4d'; ctx.beginPath(); ctx.arc(b.x,b.y,hm?6:5,0,TAU); ctx.fill();
+    ctx.fillStyle=hm?'#f0e2ff':'#ffd2b0'; ctx.beginPath(); ctx.arc(b.x,b.y,2,0,TAU); ctx.fill(); }
   if(!(G.p.invuln>0 && (clock()/80|0)%2===0)) drawShip(G.p.x,G.p.y, G.p.invuln>0);
   FX.postDraw();
   if(G.flash>0){ ctx.fillStyle='rgba(255,60,60,'+(G.flash/180*0.35)+')'; ctx.fillRect(0,0,W,H); }
@@ -671,8 +885,28 @@ function render(){
 
   if(state==='pause') overlay('PAUSE','#7ec8ff','P キーで再開','（ポーズ中  ↑↑↓↓←→←→AB  ？）');
   if(state==='over'){
-    if(G.win) overlay('STAGE CLEAR!','#7CFC00','スペース / クリックでもう一度','SCORE '+G.score+'   BEST '+Store.get());
-    else overlay('GAME OVER','#ff6a6a','スペース / クリックで再挑戦','STAGE '+G.stage+'　SCORE '+G.score+'　BEST '+Store.get());
+    // v16: 結果画面に「最高到達戦域」と次の目標を出す（S5 もう一回の動機）
+    const R=Store.rec();
+    const rline = G.recNew ? '★ 自己ベスト更新！ 最高到達 第'+R.stage+'戦域（通算ボス撃破 '+R.boss+'／出撃 '+R.runs+'回）'
+                           : '最高到達 第'+R.stage+'戦域 ―― あと'+Math.max(1,R.stage-G.stage+1)+'戦域で自己ベスト更新（出撃 '+R.runs+'回）';
+    if(G.win) overlay('STAGE CLEAR!','#7CFC00','スペース / クリックでもう一度','SCORE '+G.score+'   BEST '+Store.get(), rline);
+    else {
+      // v17: 倒れた戦域からのコンティニューを提示（残り回数つき）。使い切った/第一戦域なら従来どおり最初から。
+      const sub = canConti() ? 'C キー / ⚡ボタン … 第'+G.stage+'戦域から再挑戦（あと'+contiLeft+'回）'
+                             : (contiLeft<=0 ? 'コンティニュー使い切り ― スペース / クリックで最初から'
+                                             : 'スペース / クリックで再挑戦');
+      overlay('GAME OVER','#ff6a6a', sub, 'STAGE '+G.stage+'　SCORE '+G.score+'　BEST '+Store.get(), rline);
+      if(canConti()){ ctx.textAlign='center'; ctx.fillStyle='#8aa'; ctx.font='13px "Segoe UI"';
+        ctx.fillText('コンティニューは装備を '+sectorFor(G.stage).name+' 相当まで補給　／　スペース・クリックなら第一戦域から仕切り直し', W/2, H/2+118); ctx.textAlign='left'; }
+    }
+    // v20: 帰還報告 ―― 物語のどこまで進めたのかを結果画面で返す（S2）
+    { const ch=chapterFor(G.stage); ctx.textAlign='center';
+      ctx.fillStyle='#8ab0c0'; ctx.font='13px "Segoe UI"';
+      ctx.fillText('帰還報告：'+ch.title+'　'+sectorFor(G.stage).name, W/2, H/2-84);
+      ctx.fillStyle='#6f8f9f'; ctx.font='12px "Segoe UI"';
+      { const nx=CHAPTERS.find(k=>k.from>G.stage);
+        ctx.fillText(nx ? '次の章「'+nx.title.split('――')[0].trim()+'」は 第'+nx.from+'戦域から' : '全章を踏破した ―― あとは、記録を伸ばすだけだ', W/2, H/2-64); }
+      ctx.textAlign='left'; }
   }
 }
 
@@ -681,23 +915,62 @@ function renderBossBar(){
   ctx.fillStyle='#311'; ctx.fillRect(bx,by,bw,12); ctx.fillStyle=b.core; ctx.fillRect(bx,by,bw*clamp(b.hp/b.maxhp,0,1),12);
   ctx.strokeStyle='rgba(255,255,255,0.4)'; ctx.lineWidth=1; ctx.strokeRect(bx,by,bw,12);
   ctx.fillStyle='#ffd6e0'; ctx.font='bold 12px "Segoe UI"'; ctx.textAlign='center'; ctx.fillText('STAGE '+G.stage+' BOSS  「'+b.name+'」', W/2, by-5);
+  if(b.tier>0){ ctx.fillStyle='#ffb0b0'; ctx.font='11px "Segoe UI"';   // v18: 何が変わった敵なのかを戦闘中も出す
+    ctx.fillText('◆改修'+b.tier+'段階：'+BOSS_TIER[b.tier].note, W/2, by+26); }
+  ctx.textAlign='left';
 }
 function renderBanner(){
   if(G.warnT>0){ const bl=(clock()/130|0)%2===0; ctx.textAlign='center';
     ctx.fillStyle=bl?'#ff4d4d':'#5a1414'; ctx.font='bold 46px "Segoe UI"'; ctx.fillText('!!  W A R N I N G  !!', W/2, H/2-8);
-    ctx.fillStyle='#ffb0b0'; ctx.font='16px "Segoe UI"'; ctx.fillText('ボス接近', W/2, H/2+26); ctx.textAlign='left'; }
-  else if(G.interT>0){ ctx.textAlign='center';
-    ctx.fillStyle='#7CFC00'; ctx.font='bold 32px "Segoe UI"'; ctx.fillText('STAGE '+(G.stage-1)+' CLEAR!', W/2, H/2-20);
-    ctx.fillStyle='#39d0ff'; ctx.font='bold 44px "Segoe UI"'; ctx.fillText('STAGE '+G.stage, W/2, H/2+30); ctx.textAlign='left'; }
+    ctx.fillStyle='#ffb0b0'; ctx.font='16px "Segoe UI"'; ctx.fillText('ボス接近 ―― 「'+bossNameFor(G.stage)+'」', W/2, H/2+26);
+    { const t=bossTierOf(G.stage); if(t>0){ ctx.fillStyle='#ffd23f'; ctx.font='bold 15px "Segoe UI"';   // v18: 改修段階の予告
+      ctx.fillText('◆改修'+t+'段階：'+BOSS_TIER[t].note, W/2, H/2+52); } }
+    ctx.textAlign='left'; }
+  else if(G.contiT>0){ const sec=sectorFor(G.stage); ctx.textAlign='center';   // v17: コンティニュー再開
+    ctx.fillStyle='#39d0ff'; ctx.font='bold 30px "Segoe UI"'; ctx.fillText('CONTINUE ―― 戦線復帰', W/2, H/2-52);
+    ctx.fillStyle='#bfe6ff'; ctx.font='bold 40px "Segoe UI"'; ctx.fillText('STAGE '+G.stage, W/2, H/2-2);
+    ctx.fillStyle='#bfe6ff'; ctx.font='bold 21px "Segoe UI"'; ctx.fillText(sec.name, W/2, H/2+34);
+    ctx.fillStyle='#9fc8b0'; ctx.font='16px "Segoe UI"'; ctx.fillText('― 装備を再補給した。もう一度、あの先へ ―', W/2, H/2+60); ctx.textAlign='left'; }
+  else if(G.interT>0){ const sec=sectorFor(G.stage); ctx.textAlign='center';
+    { const ch=chapterFor(G.stage), head=chapterHead(G.stage);   // v20: 物語がどこまで進んだかを幕間で示す（章の切れ目は金色で強調）
+      ctx.fillStyle=head?'#ffd23f':'#6f8f9f'; ctx.font=(head?'bold ':'')+'15px "Segoe UI"';
+      ctx.fillText((head?'―― ここから ':'')+ch.title, W/2, H/2-116);
+      if(head){ ctx.fillStyle='#9fc8b0'; ctx.font='13px "Segoe UI"'; ctx.fillText(ch.note, W/2, H/2-94); } }
+    ctx.fillStyle='#7CFC00'; ctx.font='bold 30px "Segoe UI"'; ctx.fillText('STAGE '+(G.stage-1)+' CLEAR!', W/2, H/2-52);
+    ctx.fillStyle='#39d0ff'; ctx.font='bold 42px "Segoe UI"'; ctx.fillText('STAGE '+G.stage, W/2, H/2-2);
+    ctx.fillStyle='#bfe6ff'; ctx.font='bold 21px "Segoe UI"'; ctx.fillText(sec.name, W/2, H/2+34);
+    ctx.fillStyle='#9fc8b0'; ctx.font='16px "Segoe UI"'; ctx.fillText('― '+sec.lore+' ―', W/2, H/2+60);
+    { const m=mixFor(G.stage); ctx.fillStyle='#7ec8ff'; ctx.font='bold 14px "Segoe UI"';                                 // v19: この戦域の顔ぶれを先に知らせる／v20: 地上の編成も併記
+      ctx.fillText('◆敵編成：空 '+m.tag+'／地上 '+gmixFor(G.stage).tag+' ― '+m.hint, W/2, H/2+86); }
+    { const t=bossTierOf(G.stage); ctx.fillStyle=t>0?'#ffd23f':'#8ab0a0'; ctx.font=(t>0?'bold ':'')+'14px "Segoe UI"';   // v18: この戦域で待つ敵を先に知らせる
+      ctx.fillText('待ち受けるのは 「'+bossNameFor(G.stage)+'」'+(t>0?' ― '+BOSS_TIER[t].note:''), W/2, H/2+110); }
+    ctx.textAlign='left'; }
   if(G.alertT>0){ const bl=(clock()/110|0)%2===0; ctx.textAlign='center';
     ctx.fillStyle=bl?'#ff9f1c':'#5a3a00'; ctx.font='bold 30px "Segoe UI"'; ctx.fillText('⚠ ALERT ⚠', W/2, 108);
     ctx.fillStyle='#ffd9a0'; ctx.font='14px "Segoe UI"'; ctx.fillText('多方向より敵編隊接近！', W/2, 130); ctx.textAlign='left'; }
+  // v19: 戦域が始まってしばらく、この戦域の顔ぶれを帯で出す（第一戦域は切替バナーが出ないので、ここが唯一の告知になる）
+  if(G.mixT>0 && G.interT<=0 && G.warnT<=0 && !G.boss && state==='play'){
+    const m=mixFor(G.stage), gm=gmixFor(G.stage), a=clamp(G.mixT/700,0,1);
+    ctx.save(); ctx.globalAlpha=a; ctx.textAlign='center';
+    ctx.fillStyle='rgba(10,18,34,0.72)'; ctx.fillRect(W/2-290, 82, 580, 56);
+    ctx.strokeStyle='#39d0ff'; ctx.lineWidth=1; ctx.strokeRect(W/2-290, 82, 580, 56);
+    ctx.fillStyle='#7ec8ff'; ctx.font='bold 15px "Segoe UI"'; ctx.fillText('◆ この戦域の編成：空 '+m.tag+'／地上 '+gm.tag, W/2, 102);   // v20: 地上の顔ぶれも告知
+    ctx.fillStyle='#9fc8b0'; ctx.font='13px "Segoe UI"'; ctx.fillText(m.hint, W/2, 120);
+    ctx.fillStyle='#6f8f9f'; ctx.font='12px "Segoe UI"'; ctx.fillText(chapterFor(G.stage).title, W/2, 134);   // v20: いま物語のどこにいるか
+    ctx.restore(); ctx.textAlign='left';
+  }
 }
 function renderHUD(){
   ctx.textAlign='left';
   ctx.fillStyle='#ffe27a'; ctx.font='bold 20px "Segoe UI"'; ctx.fillText('SCORE '+G.score, 16, 28);
   ctx.fillStyle='#9fb0e8'; ctx.font='14px "Segoe UI"'; ctx.fillText('BEST '+Store.get(), 16, 48);
+  { const rs=Store.rec().stage;   // v16: 追いかける目標を戦闘中も表示
+    if(rs>0){ const ahead=G.stage>rs; ctx.fillStyle=ahead?'#ffd23f':'#6f7fae'; ctx.font=(ahead?'bold ':'')+'12px "Segoe UI"';
+      ctx.fillText(ahead?'自己ベスト更新中！':'自己ベスト 第'+rs+'戦域', 16, 66); } }
   ctx.fillStyle='#bcd'; ctx.font='bold 15px "Segoe UI"'; ctx.fillText('STAGE '+G.stage, 130, 28);
+  if(G.conti||contiLeft<CONTI_MAX){   // v17: 残りコンティニューは常に見えるところに
+    ctx.fillStyle=contiLeft>0?'#39d0ff':'#6f7fae'; ctx.font='12px "Segoe UI"';
+    ctx.fillText(contiLeft>0?'CONTINUE 残り'+contiLeft:'CONTINUE なし', 130, 66); }
   if(!G.boss && G.interT<=0 && G.warnT<=0){ const pr=clamp(G.stageT/CONFIG.stageDuration,0,1); ctx.fillStyle='#26304a'; ctx.fillRect(130,38,96,8); ctx.fillStyle='#39d0ff'; ctx.fillRect(130,38,96*pr,8); }
   for(let i=0;i<Math.max(0,G.lives);i++){ ctx.save(); ctx.translate(340+i*26, 22); ctx.scale(0.7,0.7);
     ctx.fillStyle='#bfe6ff'; drawShipShape(); ctx.fill(); ctx.restore(); }
@@ -724,27 +997,48 @@ function rrectFill(x,y,w,h,r,fill){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcT
 
 function renderTitle(){
   ctx.textAlign='center';
-  ctx.fillStyle='#bfe6ff'; ctx.font='bold 64px "Segoe UI"'; ctx.fillText('GRADIUS-LIKE', W/2, 150);
-  ctx.fillStyle='#39d0ff'; ctx.font='bold 24px "Segoe UI"'; ctx.fillText('ミドリウス シューティング v11（地上戦アップデート）', W/2, 188);
-  drawShip(W/2-220, 268, false);
+  ctx.fillStyle='#bfe6ff'; ctx.font='bold 60px "Segoe UI"'; ctx.fillText('ミドリウス', W/2, 92);
+  ctx.fillStyle='#39d0ff'; ctx.font='bold 20px "Segoe UI"'; ctx.fillText('MIDORIUS  ―  緑の防人、無限侵攻に抗う', W/2, 124);
+  // ---- 世界観・作戦説明（S1導入 / S2物語）----
+  const lore=[
+    '侵略機械帝国〈グレイ・レギオン〉が、緑なす惑星ミドリスへ襲来した。',
+    'ただ一機、生き残った試作戦闘機「ミドリ号」を駆り敵本隊へ突撃せよ。',
+    '倒れても道は続く――君が墜ちるまで、この侵攻は終わらない。',
+  ];
+  ctx.font='15px "Segoe UI"'; ctx.fillStyle='#9fc8b0'; lore.forEach((t,i)=>ctx.fillText(t, W/2, 158+i*23));
+  drawShip(W/2, 256, false);
   const info=[
     '← ↑ → ↓ / WASD … 移動 ／ Space … ショット（通常2連射）',
     '敵が落とす「P」でゲージが進み、Z で装備を発動',
-    'DOUBLE=3方向 ／ LASER=貫通 ／ OPTION=分身（最大4体）',
-    'MISSILE は地を這う対地弾！地上の戦車・ドローン基地を破壊せよ',
-    'ステージ終盤にボス出現！STAGE 3 からは上や背後からも奇襲が来る',
+    'DOUBLE=3方向 ／ LASER=貫通 ／ OPTION=分身 ／ MISSILE=対地弾',
+    'ステージ終盤にボス出現！STAGE 3 からは背後からも奇襲が来る',
+    '撃墜されても敵弾は消え、補給カプセルが届く ― 何度でも立て直せる',   // v16: 救済ルールの明示（S1）
+    '力尽きても C キー（⚡ボタン）で「倒れた戦域」から再挑戦できる（1出撃3回まで）',   // v17: コンティニューの明示（S1/S3）
+    '第四戦域からボスは「改修」されて還ってくる ― 紫の弾は追尾、赤い輪は突進の合図',   // v18: 終盤の変化の予告（S1/S3）
   ];
-  ctx.font='17px "Segoe UI"'; ctx.fillStyle='#bcd'; info.forEach((t,i)=>ctx.fillText(t, W/2, 330+i*30));
-  ctx.font='14px "Segoe UI"'; ctx.fillStyle='#8aa'; ctx.fillText('ステージ制：ボスを倒すたびに次ステージ（敵が強化）', W/2, 470);
+  ctx.font='14px "Segoe UI"'; ctx.fillStyle='#bcd'; info.forEach((t,i)=>ctx.fillText(t, W/2, 298+i*22));   // v18: 説明が1行増えたので行間を詰めて重なりを防ぐ
+  ctx.font='bold 15px "Segoe UI"'; ctx.fillStyle='#8ab0a0';
+  ctx.fillText('▶ 最初の戦場 ― '+sectorFor(1).name+'「'+sectorFor(1).lore+'」', W/2, 448);
+  ctx.font='13px "Segoe UI"'; ctx.fillStyle='#7ec8ff';   // v19: 戦域ごとに敵の顔ぶれが変わることを最初に伝える／v20: 地上と章立ても
+  ctx.fillText('戦域ごとに空と地上の編成が変わる ― 開始直後の帯で「'+mixFor(1).tag+'／'+gmixFor(1).tag+'」と知らせる', W/2, 468);
+  ctx.font='13px "Segoe UI"'; ctx.fillStyle='#8ab0a0';   // v20: 物語が全4章で進むことを最初に伝える（S2）
+  ctx.fillText('物語は全4章 ―― 防衛篇 → 突破篇 → 反攻篇 → 残響篇。章が変わる戦域では幕間でそれを告げる', W/2, 486);
   const blink=(clock()/500|0)%2===0; ctx.fillStyle=blink?'#ffe27a':'#566'; ctx.font='bold 26px "Segoe UI"';
-  ctx.fillText('スペース / クリック / タップでスタート', W/2, 520);
-  ctx.fillStyle='#778'; ctx.font='13px "Segoe UI"'; ctx.fillText('BEST '+Store.get(), W/2, 556);
+  ctx.fillText('スペース / クリック / タップで発進', W/2, 512);
+  // ---- v16: 戦績と次の目標（S5 もう一回の動機）----
+  const R=Store.rec();
+  ctx.fillStyle='#778'; ctx.font='13px "Segoe UI"';
+  ctx.fillText('BEST SCORE '+Store.get()+(R.stage>0 ? '　最高到達 第'+R.stage+'戦域　通算ボス撃破 '+R.boss+'　出撃 '+R.runs+'回' : '　（記録なし・初出撃）'), W/2, 528);
+  if(R.stage>0){ ctx.fillStyle='#ffd23f'; ctx.font='bold 14px "Segoe UI"';
+    ctx.fillText('▶ 今回の目標：'+sectorFor(R.stage+1).name+' へ到達せよ', W/2, 554); }
 }
 
 function onKey(code){
   if(code==='KeyM'){ SFX.toggle(); return; }
   if(code==='KeyR'){ startGame(); return; }
-  if(state==='title'||state==='over'){ if(code==='Space'||code==='Enter') startGame(); return; }
+  if(state==='title'||state==='over'){
+    if(code==='KeyC' && canConti()){ continueGame(); return; }        // v17: 倒れた戦域から再挑戦
+    if(code==='Space'||code==='Enter') startGame(); return; }
   if(code==='KeyP'){ state = state==='play'?'pause':'play'; if(state==='pause') konamiIdx=0; return; }
   if(state==='pause'){            // 裏コマンド入力
     if(code===KONAMI[konamiIdx]){ konamiIdx++; if(konamiIdx>=KONAMI.length){ konamiIdx=0; applyMaxPower(); } }
@@ -752,8 +1046,33 @@ function onKey(code){
     return;
   }
 }
-function gameOver(){ state='over'; G.win=false; SFX.stopBGM(); SFX.lose(); FX.shake(14); if(G.score>Store.get()) Store.set(G.score); }
-function startGame(){ newGame(); state='play'; konamiIdx=0; SFX.startBGM('play'); }
+function gameOver(){ state='over'; G.win=false; SFX.stopBGM(); SFX.lose(); FX.shake(14); if(G.score>Store.get()) Store.set(G.score);
+  if(Store.markStage(G.stage)) G.recNew=true;                              // v16: 倒れた戦域も自己ベストとして残す
+  setTimeout(()=>{ if(state==='over') SFX.startBGM('title'); }, 2400); }   // ジングルの余韻のあと結果画面に静曲（従来は無音）
+function startGame(){ newGame(); contiLeft=CONTI_MAX; Store.addRun(); state='play'; konamiIdx=0; SFX.startBGM('play'); }
+
+/* ---- v17: 戦域到達コンティニュー（S3）----
+   倒れた戦域からやり直す。丸腰で放り出さないよう、戦域に見合った装備を持たせて再開する。 */
+function contiPower(st){
+  const w=G.weapon;
+  if(st>=2){ w.speed=Math.min(CONFIG.maxSpeed, w.speed+1); }     // 第二戦域～：SPEED
+  if(st>=3){ w.missile=true; }                                    // 第三戦域～：MISSILE
+  if(st>=4){ w.shot='double'; }                                   // 第四戦域～：DOUBLE
+  if(st>=5){ w.options=Math.min(CONFIG.maxOptions, w.options+1); }// 第五戦域～：OPTION
+  if(st>=6){ w.speed=Math.min(CONFIG.maxSpeed, w.speed+1); }      // 深宙域～：SPEED もう一段
+}
+function continueGame(){
+  if(!canConti()) return;
+  const st=G.stage;                       // 倒れた戦域＝再開地点（進めた分は失わせない）
+  contiLeft--;
+  newGame();                              // 盤面・自機・敵弾をまっさらにする
+  G.stage=st; G.conti=true; G.contiT=2400;
+  contiPower(st);
+  G.spawnT=1600;                          // 再開直後に敵をぶつけない小休止
+  G.p.invuln=Math.max(G.p.invuln, 2600);
+  state='play'; konamiIdx=0; SFX.startBGM('play');
+  SFX.powerup(); FX.burst(G.p.x,G.p.y,'#39d0ff',26,4);
+}
 
 /* ---- スマホ操作パネル（キャンバス外のトラックパッド＋ボタン。pointer:coarseでのみ表示） ---- */
 const TPAD={dx:0,dy:0};
@@ -778,6 +1097,7 @@ const TPAD={dx:0,dy:0};
   fire.addEventListener('pointerup', relFire); fire.addEventListener('pointercancel', relFire);
 
   pow.addEventListener('pointerdown', e=>{ e.preventDefault(); SFX.ensure();
+    if(canConti()){ continueGame(); return; }                        // v17: 結果画面ではこのボタンがコンティニュー
     if(state==='title'||state==='over'){ startGame(); return; }
     Input.tap('KeyZ'); }, {passive:false});
 })();
