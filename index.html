@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>ミドリウス シューティング v20 〜全4章の物語と、地上まで変わる編成〜</title>
+<title>ミドリウス シューティング v21 〜全4章の物語と、地上まで変わる編成〜</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html, body { background:#05060f; overscroll-behavior:none; }
@@ -74,7 +74,9 @@ const Input = (function(){
     onKey(e.code);
   });
   document.addEventListener('keyup', e => keys.delete(e.code));
-  C.addEventListener('click', () => { SFX.ensure(); if (state==='title'||state==='over') startGame(); });
+  C.addEventListener('click', e => { SFX.ensure();
+    if (state==='title' && titleClick(e)) return;                       // v21：タイトル画面を作り直し＝「あそびかた」ボタン／面を閉じる
+    if (state==='title'||state==='over') startGame(); });
   return { held: code => keys.has(code), pressed: code => edge.has(code), clearEdges: () => edge.clear(),
     set(code,on){ if(on){ if(!keys.has(code)) edge.add(code); keys.add(code); } else keys.delete(code); },  // タッチボタン用
     tap(code){ edge.add(code); } };
@@ -995,49 +997,168 @@ function renderPowerMeter(){
 }
 function rrectFill(x,y,w,h,r,fill){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); ctx.fillStyle=fill; ctx.fill(); }
 
+// ── v21：タイトル画面を作り直し（大きなロゴ・飛ぶ自機と敵編隊・丸い発進の帯・「あそびかた」の面）──
+//    説明の字の山はタイトルから外し、H キー／「あそびかた」ボタンで開く面へ移した（文はそのまま）。
+const TITLE_FONT='"Yu Gothic UI","Hiragino Sans","Meiryo","Segoe UI",sans-serif';
+let titleHelp=false, titleT0=0, titleLast=0;
+const TITLE_HELP_BTN={ x:W/2-170, y:402, w:340, h:40 };          // 「あそびかた」ボタンの場所（キャンバス内の座標）
+const TITLE_DEMO=['zako','wave','carrier','zigzag'].map(k=>({ type:k, col:ENEMY_DEF[k].col, wing:ENEMY_DEF[k].wing, r:ENEMY_DEF[k].r, x:0, y:0, t:0 }));
+// ---- 世界観・作戦説明（S1導入 / S2物語）。v21：「あそびかた」の面で見せる ----
+const TITLE_LORE=[
+  '侵略機械帝国〈グレイ・レギオン〉が、緑なす惑星ミドリスへ襲来した。',
+  'ただ一機、生き残った試作戦闘機「ミドリ号」を駆り敵本隊へ突撃せよ。',
+  '倒れても道は続く――君が墜ちるまで、この侵攻は終わらない。',
+];
+const TITLE_INFO=[
+  '← ↑ → ↓ / WASD … 移動 ／ Space … ショット（通常2連射）',
+  '敵が落とす「P」でゲージが進み、Z で装備を発動',
+  'DOUBLE=3方向 ／ LASER=貫通 ／ OPTION=分身 ／ MISSILE=対地弾',
+  'ステージ終盤にボス出現！STAGE 3 からは背後からも奇襲が来る',
+  '撃墜されても敵弾は消え、補給カプセルが届く ― 何度でも立て直せる',   // v16: 救済ルールの明示（S1）
+  '力尽きても C キー（⚡ボタン）で「倒れた戦域」から再挑戦できる（1出撃3回まで）',   // v17: コンティニューの明示（S1/S3）
+  '第四戦域からボスは「改修」されて還ってくる ― 紫の弾は追尾、赤い輪は突進の合図',   // v18: 終盤の変化の予告（S1/S3）
+];
+function rrPath(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r); ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h); ctx.lineTo(x+r,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r); ctx.quadraticCurveTo(x,y,x+r,y); ctx.closePath(); }
+// ロゴ：太い字＋濃いふち＋白い細ふち＋たてのグラデーション＋緑の光。maxW をこえる時は字を小さくする。
+function titleLogo(text,cx,y,size,maxW,t){
+  ctx.save(); ctx.textAlign='center'; ctx.textBaseline='alphabetic'; ctx.lineJoin='round';
+  ctx.font='900 '+size+'px '+TITLE_FONT;
+  const chars=[...text];
+  let ws=chars.map(ch=>ctx.measureText(ch).width), total=ws.reduce((p,q)=>p+q,0);
+  if(total>maxW){ size=Math.floor(size*maxW/total); ctx.font='900 '+size+'px '+TITLE_FONT;
+    ws=chars.map(ch=>ctx.measureText(ch).width); total=ws.reduce((p,q)=>p+q,0); }
+  let x=cx-total/2;
+  chars.forEach((ch,i)=>{
+    const e=Math.max(0,Math.min(1,(t-0.15-i*0.08)/0.45));                          // 1文字ずつ飛びこんでくる
+    const back=1+2.70158*Math.pow(e-1,3)+1.70158*Math.pow(e-1,2);
+    const bob=Math.sin(t*2.0-i*0.6)*4*e;                                             // そのあとは波うつ
+    ctx.save(); ctx.translate(x+ws[i]/2, y+bob-(1-e)*50); ctx.scale(back,back); ctx.globalAlpha=e;
+    ctx.shadowColor='rgba(70,255,150,0.95)'; ctx.shadowBlur=30;
+    ctx.strokeStyle='#04261a'; ctx.lineWidth=Math.max(8,size*0.17); ctx.strokeText(ch,0,0);
+    ctx.shadowBlur=0;
+    ctx.strokeStyle='#ffffff'; ctx.lineWidth=Math.max(3,size*0.06); ctx.strokeText(ch,0,0);
+    const g=ctx.createLinearGradient(0,-size*0.9,0,size*0.12);
+    g.addColorStop(0,'#f6fff0'); g.addColorStop(0.45,'#7dffb0'); g.addColorStop(1,'#12a8c8');
+    ctx.fillStyle=g; ctx.fillText(ch,0,0);
+    ctx.restore(); x+=ws[i]; });
+  ctx.restore();
+}
+// 記録の小さな丸い札を、まん中そろえで横にならべる
+function titlePills(items,cx,y){
+  ctx.save(); ctx.font='bold 13px '+TITLE_FONT; ctx.textAlign='center';
+  const ws=items.map(s=>ctx.measureText(s).width+26), total=ws.reduce((p,q)=>p+q,0)+10*(items.length-1);
+  let x=cx-total/2;
+  items.forEach((s,i)=>{ rrPath(x,y,ws[i],26,13); ctx.fillStyle='rgba(6,16,24,0.78)'; ctx.fill();
+    ctx.strokeStyle='rgba(255,210,63,0.55)'; ctx.lineWidth=1; ctx.stroke();
+    ctx.fillStyle='#ffe27a'; ctx.fillText(s, x+ws[i]/2, y+18); x+=ws[i]+10; });
+  ctx.restore();
+}
+// タイトルでのクリック／タップ。true を返したら「ここで受けた」（発進はしない）
+function titleClick(e){
+  if(titleHelp){ titleHelp=false; return true; }                                    // あそびかたの面は、どこを押しても閉じる
+  const r=C.getBoundingClientRect(); if(!r.width||!r.height) return false;
+  const x=(e.clientX-r.left)*W/r.width, y=(e.clientY-r.top)*H/r.height, b=TITLE_HELP_BTN;
+  if(x>=b.x && x<=b.x+b.w && y>=b.y-8 && y<=b.y+b.h+8){ titleHelp=true; return true; }
+  return false;
+}
 function renderTitle(){
-  ctx.textAlign='center';
-  ctx.fillStyle='#bfe6ff'; ctx.font='bold 60px "Segoe UI"'; ctx.fillText('ミドリウス', W/2, 92);
-  ctx.fillStyle='#39d0ff'; ctx.font='bold 20px "Segoe UI"'; ctx.fillText('MIDORIUS  ―  緑の防人、無限侵攻に抗う', W/2, 124);
-  // ---- 世界観・作戦説明（S1導入 / S2物語）----
-  const lore=[
-    '侵略機械帝国〈グレイ・レギオン〉が、緑なす惑星ミドリスへ襲来した。',
-    'ただ一機、生き残った試作戦闘機「ミドリ号」を駆り敵本隊へ突撃せよ。',
-    '倒れても道は続く――君が墜ちるまで、この侵攻は終わらない。',
-  ];
-  ctx.font='15px "Segoe UI"'; ctx.fillStyle='#9fc8b0'; lore.forEach((t,i)=>ctx.fillText(t, W/2, 158+i*23));
-  drawShip(W/2, 256, false);
-  const info=[
-    '← ↑ → ↓ / WASD … 移動 ／ Space … ショット（通常2連射）',
-    '敵が落とす「P」でゲージが進み、Z で装備を発動',
-    'DOUBLE=3方向 ／ LASER=貫通 ／ OPTION=分身 ／ MISSILE=対地弾',
-    'ステージ終盤にボス出現！STAGE 3 からは背後からも奇襲が来る',
-    '撃墜されても敵弾は消え、補給カプセルが届く ― 何度でも立て直せる',   // v16: 救済ルールの明示（S1）
-    '力尽きても C キー（⚡ボタン）で「倒れた戦域」から再挑戦できる（1出撃3回まで）',   // v17: コンティニューの明示（S1/S3）
-    '第四戦域からボスは「改修」されて還ってくる ― 紫の弾は追尾、赤い輪は突進の合図',   // v18: 終盤の変化の予告（S1/S3）
-  ];
-  ctx.font='14px "Segoe UI"'; ctx.fillStyle='#bcd'; info.forEach((t,i)=>ctx.fillText(t, W/2, 298+i*22));   // v18: 説明が1行増えたので行間を詰めて重なりを防ぐ
-  ctx.font='bold 15px "Segoe UI"'; ctx.fillStyle='#8ab0a0';
-  ctx.fillText('▶ 最初の戦場 ― '+sectorFor(1).name+'「'+sectorFor(1).lore+'」', W/2, 448);
-  ctx.font='13px "Segoe UI"'; ctx.fillStyle='#7ec8ff';   // v19: 戦域ごとに敵の顔ぶれが変わることを最初に伝える／v20: 地上と章立ても
-  ctx.fillText('戦域ごとに空と地上の編成が変わる ― 開始直後の帯で「'+mixFor(1).tag+'／'+gmixFor(1).tag+'」と知らせる', W/2, 468);
-  ctx.font='13px "Segoe UI"'; ctx.fillStyle='#8ab0a0';   // v20: 物語が全4章で進むことを最初に伝える（S2）
-  ctx.fillText('物語は全4章 ―― 防衛篇 → 突破篇 → 反攻篇 → 残響篇。章が変わる戦域では幕間でそれを告げる', W/2, 486);
-  const blink=(clock()/500|0)%2===0; ctx.fillStyle=blink?'#ffe27a':'#566'; ctx.font='bold 26px "Segoe UI"';
-  ctx.fillText('スペース / クリック / タップで発進', W/2, 512);
+  const cx=W/2, now=clock(); if(!titleT0) titleT0=now;
+  const t=(now-titleT0)/1000, dt=Math.min(50, now-(titleLast||now)); titleLast=now;
+  // 星を流す（タイトルでは本編の update が止まっているので、ここで少しずつ動かす）
+  if(G) for(const s of G.stars){ s.x-=s.spd*dt*0.6; if(s.x<0){ s.x=W; s.y=Math.random()*H; } }
+  // 右下に、緑の惑星ミドリスのふち
+  { const px=W*0.80, py=H+520, pr=600;
+    const g=ctx.createLinearGradient(0,py-pr,0,H); g.addColorStop(0,'rgba(40,150,84,0.85)'); g.addColorStop(1,'rgba(8,40,24,0.85)');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(px,py,pr,0,TAU); ctx.fill();
+    ctx.strokeStyle='rgba(120,255,170,0.16)'; ctx.lineWidth=12; ctx.beginPath(); ctx.arc(px,py,pr+4,0,TAU); ctx.stroke();
+    ctx.strokeStyle='rgba(150,255,190,0.6)'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(px,py,pr,0,TAU); ctx.stroke(); }
+  if(titleHelp){ renderTitleHelp(); return; }
+  // 英字の小見出し
+  ctx.save(); ctx.textAlign='center'; ctx.font='bold 15px "Segoe UI",sans-serif'; ctx.fillStyle='rgba(150,255,195,0.9)';
+  { const s='MIDORIUS', step=20; [...s].forEach((ch,i)=>ctx.fillText(ch, cx-(s.length-1)*step/2+i*step, 52)); }
+  ctx.strokeStyle='rgba(150,255,195,0.45)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(cx-260,47); ctx.lineTo(cx-100,47); ctx.moveTo(cx+100,47); ctx.lineTo(cx+260,47); ctx.stroke();
+  ctx.restore();
+  // ロゴ
+  titleLogo('ミドリウス', cx, 152, 98, W*0.82, t);
+  // ひとこと
+  ctx.textAlign='center'; ctx.font='bold 20px '+TITLE_FONT; ctx.fillStyle='rgba(190,245,215,0.95)';
+  ctx.fillText('緑の防人、無限侵攻に抗う', cx, 196);
+  // ミドリ号と敵の編隊（自機は左から、敵は右からすべりこむ）
+  { const e=Math.max(0,Math.min(1,(t-0.3)/0.9)), ez=1-Math.pow(1-e,3), by=270;
+    const sx=215+Math.sin(t*0.9)*18-(1-ez)*320, sy=by+Math.sin(t*1.7)*16;
+    ctx.save(); ctx.lineCap='round'; ctx.strokeStyle='#c8ffe2'; ctx.lineWidth=3;
+    for(let i=0;i<5;i++){ const k=(t*1.5+i/5)%1, bx=sx+32+k*320;                     // ショットの光
+      ctx.globalAlpha=(k<0.8?1:(1-k)/0.2)*ez; ctx.beginPath(); ctx.moveTo(bx,sy); ctx.lineTo(bx+18,sy); ctx.stroke(); }
+    ctx.restore();
+    drawOption({ x:sx-40, y:by+Math.sin(t*1.7-0.6)*16 });
+    drawShip(sx, sy, false);
+    TITLE_DEMO.forEach((en,i)=>{ en.x=612+i*64+(1-ez)*340; en.y=by+Math.sin(t*2.1+i*0.9)*28; en.t=t*1000; drawEnemy(en); }); }
+  // 発進の合図（ふわっと明滅する丸い帯）
+  { const p=0.5+0.5*Math.sin(t*3.2), w=500, h=52, x=cx-w/2, y=328;
+    ctx.save(); ctx.globalAlpha=0.74+0.26*p; ctx.shadowColor='rgba(90,255,160,0.9)'; ctx.shadowBlur=8+14*p;
+    rrPath(x,y,w,h,26); ctx.fillStyle='rgba(6,46,32,0.88)'; ctx.fill(); ctx.shadowBlur=0;
+    ctx.strokeStyle='#7dffb0'; ctx.lineWidth=2.5; ctx.stroke();
+    ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.font='900 23px '+TITLE_FONT;
+    ctx.fillText('▶  スペース ／ クリック ／ タップで発進', cx, y+34, w-30); ctx.restore(); }
+  // 「あそびかた」ボタン
+  { const b=TITLE_HELP_BTN;
+    rrPath(b.x,b.y,b.w,b.h,20); ctx.fillStyle='rgba(12,22,46,0.82)'; ctx.fill();
+    ctx.strokeStyle='rgba(126,200,255,0.7)'; ctx.lineWidth=1.5; ctx.stroke();
+    ctx.fillStyle='#cfe6ff'; ctx.textAlign='center'; ctx.font='bold 17px '+TITLE_FONT;
+    ctx.fillText('？  あそびかた（H キー ／ ここを押す）', cx, b.y+26, b.w-24); }
   // ---- v16: 戦績と次の目標（S5 もう一回の動機）----
   const R=Store.rec();
-  ctx.fillStyle='#778'; ctx.font='13px "Segoe UI"';
-  ctx.fillText('BEST SCORE '+Store.get()+(R.stage>0 ? '　最高到達 第'+R.stage+'戦域　通算ボス撃破 '+R.boss+'　出撃 '+R.runs+'回' : '　（記録なし・初出撃）'), W/2, 528);
-  if(R.stage>0){ ctx.fillStyle='#ffd23f'; ctx.font='bold 14px "Segoe UI"';
-    ctx.fillText('▶ 今回の目標：'+sectorFor(R.stage+1).name+' へ到達せよ', W/2, 554); }
+  ctx.textAlign='center';
+  if(R.stage>0){ ctx.fillStyle='#ffd23f'; ctx.font='bold 16px '+TITLE_FONT;
+    ctx.fillText('▶ 今回の目標：'+sectorFor(R.stage+1).name+' へ到達せよ', cx, 472); }
+  else { ctx.fillStyle='#8ab0a0'; ctx.font='bold 15px '+TITLE_FONT;
+    ctx.fillText('▶ 最初の戦場 ― '+sectorFor(1).name+'「'+sectorFor(1).lore+'」', cx, 472, W-60); }
+  // 操作の要点（小さく2行）
+  ctx.font='14px '+TITLE_FONT; ctx.fillStyle='rgba(175,195,225,0.88)';
+  ctx.fillText('← ↑ → ↓ / WASD 移動　　Space ショット　　Z パワーアップ発動', cx, 500);
+  ctx.fillText('P ポーズ　　M 音　　R リスタート　　H あそびかた', cx, 520);
+  // 記録のふだ
+  titlePills(R.stage>0 ? ['BEST SCORE '+Store.get(), '最高到達 第'+R.stage+'戦域', '通算ボス撃破 '+R.boss, '出撃 '+R.runs+'回']
+                       : ['BEST SCORE '+Store.get(), '記録なし・初出撃'], cx, 540);
+}
+// v21：「あそびかた」の面（タイトルにあった説明の文をそのまま移した。H／Esc／クリック／タップで閉じる）
+function renderTitleHelp(){
+  const cx=W/2, mw=W-100;
+  ctx.save();
+  ctx.fillStyle='rgba(2,6,14,0.70)'; ctx.fillRect(0,0,W,H);
+  rrPath(30,16,W-60,H-32,22); ctx.fillStyle='rgba(8,22,30,0.93)'; ctx.fill();
+  ctx.strokeStyle='rgba(125,255,176,0.55)'; ctx.lineWidth=2; ctx.stroke();
+  ctx.textAlign='center';
+  ctx.font='900 30px '+TITLE_FONT; ctx.fillStyle='#bfffe0'; ctx.fillText('あそびかた', cx, 60);
+  ctx.font='17px '+TITLE_FONT; ctx.fillStyle='#9fe0b8';
+  TITLE_LORE.forEach((s,i)=>ctx.fillText(s, cx, 98+i*27, mw));
+  ctx.strokeStyle='rgba(125,255,176,0.3)'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(110,170); ctx.lineTo(W-110,170); ctx.stroke();
+  ctx.font='17px '+TITLE_FONT; ctx.fillStyle='#dbe8f4';
+  TITLE_INFO.forEach((s,i)=>ctx.fillText(s, cx, 200+i*28, mw));
+  ctx.beginPath(); ctx.moveTo(110,384); ctx.lineTo(W-110,384); ctx.stroke();
+  ctx.font='bold 16px '+TITLE_FONT; ctx.fillStyle='#8ab0a0';
+  ctx.fillText('▶ 最初の戦場 ― '+sectorFor(1).name+'「'+sectorFor(1).lore+'」', cx, 414, mw);
+  ctx.font='16px '+TITLE_FONT; ctx.fillStyle='#7ec8ff';   // v19: 戦域ごとに敵の顔ぶれが変わることを最初に伝える／v20: 地上と章立ても
+  ctx.fillText('戦域ごとに空と地上の編成が変わる ― 開始直後の帯で「'+mixFor(1).tag+'／'+gmixFor(1).tag+'」と知らせる', cx, 442, mw);
+  ctx.fillStyle='#8ab0a0';                                 // v20: 物語が全4章で進むことを最初に伝える（S2）
+  ctx.fillText('物語は全4章 ―― 防衛篇 → 突破篇 → 反攻篇 → 残響篇。章が変わる戦域では幕間でそれを告げる', cx, 470, mw);
+  { const w=440, h=40, x=cx-w/2, y=506;
+    rrPath(x,y,w,h,20); ctx.fillStyle='rgba(6,46,32,0.9)'; ctx.fill(); ctx.strokeStyle='#7dffb0'; ctx.lineWidth=2; ctx.stroke();
+    ctx.fillStyle='#fff'; ctx.font='900 17px '+TITLE_FONT; ctx.fillText('とじる（H ／ クリック ／ タップ）　　スペースで発進', cx, y+26, w-24); }
+  ctx.restore();
 }
 
 function onKey(code){
   if(code==='KeyM'){ SFX.toggle(); return; }
   if(code==='KeyR'){ startGame(); return; }
+  if(state==='title'){                                                // v21：タイトル画面を作り直し＝H で「あそびかた」を開け閉め
+    if(code==='KeyH'){ titleHelp=!titleHelp; return; }
+    if(code==='Escape' && titleHelp){ titleHelp=false; return; } }
   if(state==='title'||state==='over'){
-    if(code==='KeyC' && canConti()){ continueGame(); return; }        // v17: 倒れた戦域から再挑戦
+    if(code==='KeyC' && canConti()){ continueGame(); return; }       // v17: 倒れた戦域から再挑戦
     if(code==='Space'||code==='Enter') startGame(); return; }
   if(code==='KeyP'){ state = state==='play'?'pause':'play'; if(state==='pause') konamiIdx=0; return; }
   if(state==='pause'){            // 裏コマンド入力
